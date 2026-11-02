@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mallikins - Night of the Living Mannequins</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Creepster&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
+
+        body {
+            background-color: #050508;
+            color: #e2e8f0;
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .font-creep {
+            font-family: 'Creepster', cursive;
+        }
+
+        .font-retro {
+            font-family: 'VT323', monospace;
+        }
+
+        /* Scanline effect overlay */
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.35) 50%
+            ), linear-gradient(
+                90deg,
+                rgba(255, 0, 0, 0.03),
+                rgba(0, 255, 0, 0.01),
+                rgba(0, 0, 255, 0.03)
+            );
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+        }
+
+        /* Pulse heart rate animation */
+        @keyframes pulse-heart {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.15); opacity: 1; filter: drop-shadow(0 0 8px #ef4444); }
+        }
+
+        .heart-beat {
+            animation: pulse-heart var(--beat-speed, 1.2s) infinite ease-in-out;
+        }
+
+        /* Custom scrollbar for inventory/notes if needed */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen m-0 p-0 select-none bg-black text-slate-200">
+
+    <!-- Game Container -->
+    <div id="game-container" class="relative w-full max-w-5xl h-screen max-h-[750px] flex flex-col justify-between items-center overflow-hidden border-0 md:border border-slate-800 rounded-none md:rounded-xl shadow-2xl bg-slate-950">
+        
+        <!-- CRT Overlay -->
+        <div class="scanlines absolute inset-0 z-30 opacity-70"></div>
+
+        <!-- Top HUD Bar -->
+        <header id="hud" class="hidden absolute top-0 left-0 right-0 z-20 flex justify-between items-center p-3 md:p-4 bg-slate-950/80 backdrop-blur border-b border-slate-800/80 text-xs md:text-sm">
+            <!-- Heartbeat / Threat Meter -->
+            <div class="flex items-center space-x-2 md:space-x-3">
+                <div id="heart-icon" class="text-red-600 text-xl md:text-2xl heart-beat">♥</div>
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-slate-400 font-mono uppercase tracking-wider">Heart Rate</span>
+                    <span id="threat-level" class="font-bold text-red-500 font-mono">CALM</span>
+                </div>
+            </div>
+
+            <!-- Flashlight & Stamina -->
+            <div class="flex items-center space-x-4 md:space-x-6">
+                <!-- Battery -->
+                <div class="flex items-center space-x-2">
+                    <span class="text-[10px] text-slate-400 font-mono">FLASHLIGHT [F]</span>
+                    <div class="w-16 md:w-24 h-3 bg-slate-900 border border-slate-700 rounded-sm overflow-hidden p-0.5">
+                        <div id="battery-bar" class="h-full bg-amber-400 transition-all duration-300" style="width: 100%;"></div>
+                    </div>
+                </div>
+                <!-- Action Cue -->
+                <div id="interaction-prompt" class="hidden animate-bounce bg-amber-500/20 border border-amber-500/50 text-amber-300 px-3 py-1 rounded text-xs font-bold font-mono">
+                    PRESS [E] TO INTERACT
+                </div>
+            </div>
+
+            <!-- Sound toggle -->
+            <button id="mute-btn" class="p-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 transition">
+                🔊 Sound
+            </button>
+        </header>
+
+        <!-- Canvas Game World -->
+        <div class="relative w-full h-full flex items-center justify-center bg-slate-950">
+            <canvas id="gameCanvas" class="w-full h-full object-contain block"></canvas>
+        </div>
+
+        <!-- Bottom Inventory Bar -->
+        <footer id="inventory-bar" class="hidden absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-2 p-2 bg-slate-950/90 border border-slate-800/90 rounded-lg backdrop-blur shadow-lg">
+            <div class="text-[10px] text-slate-400 font-mono uppercase mr-1 px-1">Keys / Items:</div>
+            <div id="inventory-slots" class="flex space-x-2">
+                <!-- Dynamic slots inserted by JS -->
+            </div>
+        </footer>
+
+        <!-- Mobile Touch Controls Overlay -->
+        <div id="touch-controls" class="hidden absolute inset-0 z-20 pointer-events-none flex justify-between items-end p-6 md:hidden">
+            <!-- Virtual D-Pad / Joystick Area -->
+            <div id="joystick-zone" class="w-32 h-32 bg-slate-900/40 border border-slate-700/50 rounded-full pointer-events-auto flex items-center justify-center relative touch-none">
+                <div id="joystick-knob" class="w-12 h-12 bg-slate-400/50 rounded-full absolute"></div>
+            </div>
+            <!-- Action Buttons -->
+            <div class="flex space-x-3 pointer-events-auto">
+                <button id="btn-interact" class="w-14 h-14 bg-amber-600/80 active:bg-amber-500 rounded-full text-white font-bold text-lg shadow-lg flex items-center justify-center border border-amber-400">E</button>
+                <button id="btn-flashlight" class="w-14 h-14 bg-indigo-600/80 active:bg-indigo-500 rounded-full text-white font-bold text-lg shadow-lg flex items-center justify-center border border-indigo-400">F</button>
+            </div>
+        </div>
+
+        <!-- OVERLAYS & MENUS -->
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="absolute inset-0 z-40 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-slate-950 via-slate-900 to-black text-center">
+            <h1 class="text-6xl md:text-8xl font-creep text-red-600 tracking-wider mb-2 drop-shadow-[0_5px_15px_rgba(220,38,38,0.5)]">MALLIKINS</h1>
+            <p class="text-sm md:text-base text-slate-400 max-w-md mb-6 font-mono">The store is closed. The doors are locked. The mannequins are awake.</p>
+
+            <div class="bg-slate-900/80 border border-slate-800 p-4 rounded-xl max-w-lg mb-8 text-left space-y-2 text-xs md:text-sm text-slate-300 shadow-inner">
+                <h2 class="text-amber-400 font-bold uppercase tracking-wider text-center mb-2">Objective & Survival Guide</h2>
+                <p>🔑 Find the <strong class="text-red-400">Red Key</strong>, <strong class="text-cyan-400">Blue Key</strong>, and <strong class="text-yellow-400">Golden Key</strong> to unbolt the main exit doors.</p>
+                <p>🛠️ Collect tools like the <strong class="text-emerald-400">Crowbar</strong> to break through barricaded room doors.</p>
+                <p>🧍 <strong>Beware of the Mallikin:</strong> It hunts by sound and line-of-sight. When moving, it freezes if you look right at it with your light, but it creeps up fast in the dark!</p>
+                <p>🧺 <strong>Hiding Spots:</strong> Hide inside Clothing Racks [E] to escape pursuit.</p>
+                <div class="mt-4 pt-2 border-t border-slate-800 flex justify-between text-[11px] font-mono text-slate-400">
+                    <span>WASD / Arrows: Move</span>
+                    <span>E: Interact / Hide</span>
+                    <span>F: Flashlight</span>
+                </div>
+            </div>
+
+            <button id="start-btn" class="px-8 py-3 bg-red-600 hover:bg-red-500 active:scale-95 text-white font-bold text-lg rounded-lg shadow-lg shadow-red-900/50 transition duration-200 tracking-wider">
+                ENTER THE MALL
+            </button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameover-screen" class="hidden absolute inset-0 z-50 flex flex-col items-center justify-center p-6 bg-black/95 text-center animate-fade-in">
+            <div id="jumpscare-face" class="w-48 h-48 mb-4 flex items-center justify-center relative">
+                <!-- Eerie SVG Mannequin Face -->
+                <svg class="w-full h-full text-slate-200 drop-shadow-[0_0_25px_rgba(239,68,68,0.8)]" viewBox="0 0 100 100" fill="currentColor">
+                    <path d="M50,10 C30,10 20,30 20,55 C20,80 35,92 50,92 C65,92 80,80 80,55 C80,30 70,10 50,10 Z" fill="#e2e8f0"/>
+                    <circle cx="38" cy="45" r="5" fill="#000"/>
+                    <circle cx="62" cy="45" r="5" fill="#000"/>
+                    <circle cx="38" cy="45" r="2" fill="#ef4444"/>
+                    <circle cx="62" cy="45" r="2" fill="#ef4444"/>
+                    <ellipse cx="50" cy="72" rx="12" ry="8" fill="#000"/>
+                    <path d="M 30,35 Q 38,30 45,37" stroke="#334155" stroke-width="2" fill="none"/>
+                    <path d="M 70,35 Q 62,30 55,37" stroke="#334155" stroke-width="2" fill="none"/>
+                </svg>
+            </div>
+            <h2 class="text-5xl md:text-6xl font-creep text-red-600 mb-2">YOU WERE CAUGHT</h2>
+            <p class="text-slate-400 font-mono mb-6">Another display model for the retail floor...</p>
+            <button id="restart-btn" class="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg border border-slate-600 transition">
+                TRY AGAIN
+            </button>
+        </div>
+
+        <!-- Victory Screen -->
+        <div id="victory-screen" class="hidden absolute inset-0 z-50 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-slate-900 to-black text-center">
+            <div class="text-6xl mb-2">🚪🏃💨</div>
+            <h2 class="text-5xl md:text-6xl font-creep text-amber-400 mb-2">YOU ESCAPED!</h2>
+            <p class="text-slate-300 font-mono mb-4 max-w-md">You unbolted the heavy glass exit doors and ran into the cool morning air.</p>
+            <div class="bg-slate-900 border border-slate-800 p-4 rounded-lg mb-6 font-mono text-sm text-slate-400 space-y-1">
+                <div>Time Elapsed: <span id="final-time" class="text-white font-bold">00:00</span></div>
+                <div>Items Collected: <span id="final-items" class="text-white font-bold">0/4</span></div>
+            </div>
+            <button id="playagain-btn" class="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow-lg shadow-emerald-900/50 transition">
+                PLAY AGAIN
+            </button>
+        </div>
+
+    </div>
+
+    <!-- MAIN GAME SCRIPT -->
+    <script>
+        /**
+         * MALLIKINS - Top-Down Survival Horror Canvas Game
+         * Features: Dynamic Light Rays / Fog of War, Procedural Audio Synthesis, State Machine AI, Key/Door Puzzle Progression.
+         */
+
+        // --- AUDIO SYNTHESIS ENGINE (Web Audio API) ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.isMuted = false;
+                this.heartbeatOsc = null;
+                this.ambientGain = null;
+            }
+
+            init() {
+                if (this.ctx) return;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                this.startAmbientDrone();
+            }
+
+            startAmbientDrone() {
+                if (!this.ctx || this.isMuted) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const filter = this.ctx.createBiquadFilter();
+                    this.ambientGain = this.ctx.createGain();
+
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(55, this.ctx.currentTime); // Low A hum
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(120, this.ctx.currentTime);
+
+                    this.ambientGain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+
+                    osc.connect(filter);
+                    filter.connect(this.ambientGain);
+                    this.ambientGain.connect(this.ctx.destination);
+                    osc.start();
+                } catch(e) {}
+            }
+
+            playBeep(freq = 440, type = 'sine', duration = 0.1, vol = 0.1) {
+                if (!this.ctx || this.isMuted) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e) {}
+            }
+
+            playHeartbeat(rateFactor = 1.0) {
+                if (!this.ctx || this.isMuted) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(60, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(30, this.ctx.currentTime + 0.15);
+
+                    gain.gain.setValueAtTime(0.3 * rateFactor, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.15);
+                } catch(e) {}
+            }
+
+            playJumpscare() {
+                if (!this.ctx || this.isMuted) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.3);
+
+                    gain.gain.setValueAtTime(0.6, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.6);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.6);
+                } catch(e) {}
+            }
+
+            playPickup() {
+                this.playBeep(587.33, 'sine', 0.1, 0.2); // D5
+                setTimeout(() => this.playBeep(880, 'sine', 0.15, 0.2), 80); // A5
+            }
+
+            playDoorUnlock() {
+                this.playBeep(200, 'triangle', 0.2, 0.3);
+                setTimeout(() => this.playBeep(300, 'triangle', 0.2, 0.3), 100);
+            }
+        }
+
+        const sounds = new SoundEngine();
+
+        // --- MAP & LAYOUT CONFIGURATION ---
+        const TILE_SIZE = 40;
+        // Grid map (24 cols x 18 rows = 960x720 internal canvas)
+        // 1: Wall, 0: Floor, 2: Door (Locked/Unlocked), 3: Hiding Rack, 4: Main Exit
+        const MAP_GRID = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,0,0,0,1,0,0,0,0,0,1,4,4,1,0,0,0,0,0,1,0,0,0,1],
+            [1,0,3,0,1,0,3,0,0,0,1,0,0,1,0,0,3,0,0,1,0,3,0,1],
+            [1,0,0,0,1,0,0,0,0,0,2,0,0,2,0,0,0,0,0,1,0,0,0,1],
+            [1,1,2,1,1,1,1,1,0,0,1,1,1,1,0,0,1,1,1,1,1,2,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,1],
+            [1,0,0,0,1,1,1,2,1,1,0,0,0,0,1,1,2,1,1,1,0,0,0,1],
+            [1,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,1],
+            [1,0,0,0,1,0,3,0,0,1,0,0,0,0,1,0,0,3,0,1,0,0,0,1],
+            [1,1,2,1,1,0,0,0,0,1,1,1,1,1,1,0,0,0,0,1,1,2,1,1],
+            [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+            [1,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,1],
+            [1,1,1,1,1,0,0,1,1,1,2,1,1,2,1,1,1,0,0,1,1,1,1,1],
+            [1,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,1],
+            [1,0,3,0,2,0,0,2,0,3,0,0,0,0,3,0,2,0,0,2,0,3,0,1],
+            [1,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        ];
+
+        const MAP_COLS = MAP_GRID[0].length;
+        const MAP_ROWS = MAP_GRID.length;
+
+        // Interactive Door Entities Definition
+        const DOORS = [
+            { id: 'electronics_door', col: 2, row: 4, reqItem: 'crowbar', isLocked: true, name: 'Barricaded Door' },
+            { id: 'storage_door', col: 21, row: 4, reqItem: 'blue_key', isLocked: true, name: 'Storage Room' },
+            { id: 'security_door', col: 7, row: 7, reqItem: 'red_key', isLocked: true, name: 'Security Office' },
+            { id: 'vip_door', col: 16, row: 7, reqItem: 'crowbar', isLocked: true, name: 'Staff Lounge' },
+            { id: 'food_door_1', col: 2, row: 10, reqItem: null, isLocked: false, name: 'Food Court A' },
+            { id: 'food_door_2', col: 21, row: 10, reqItem: null, isLocked: false, name: 'Food Court B' },
+            { id: 'back_door_1', col: 10, row: 13, reqItem: null, isLocked: false, name: 'Hallway Door' },
+            { id: 'back_door_2', col: 13, row: 13, reqItem: null, isLocked: false, name: 'Hallway Door' },
+            { id: 'main_exit_l', col: 11, row: 3, reqItem: 'gold_key', isLocked: true, name: 'Main Exit Gate' },
+            { id: 'main_exit_r', col: 12, row: 3, reqItem: 'gold_key', isLocked: true, name: 'Main Exit Gate' }
+        ];
+
+        // Items Configuration & Spawns
+        const ITEMS = [
+            { id: 'crowbar', name: 'Crowbar', color: '#10b981', icon: '🛠️', col: 2, row: 15, collected: false },
+            { id: 'blue_key', name: 'Blue Key', color: '#3b82f6', icon: '🔑', col: 21, row: 15, collected: false },
+            { id: 'red_key', name: 'Red Key', color: '#ef4444', icon: '🔑', col: 1, row: 2, collected: false }, // Inside electronics
+            { id: 'gold_key', name: 'Golden Master Key', color: '#eab308', icon: '🔑', col: 7, row: 9, collected: false } // Inside security
+        ];
+
+        // Room Labels for Immersion
+        const ROOM_LABELS = [
+            { text: 'MAIN ATRIUM', x: 12, y: 6 },
+            { text: 'ELECTRONICS', x: 2, y: 2 },
+            { text: 'CLOTHING BOUTIQUE', x: 21, y: 2 },
+            { text: 'SECURITY OFFICE', x: 7, y: 9 },
+            { text: 'STAFF RESTROOMS', x: 17, y: 9 },
+            { text: 'FOOD COURT', x: 12, y: 15 },
+            { text: 'MAIN EXIT', x: 11.5, y: 1.5 }
+        ];
+
+        // --- GAME STATE VARIABLES ---
+        let canvas, ctx;
+        let gameRunning = false;
+        let gameTime = 0;
+        let timerInterval = null;
+
+        // Player State
+        const player = {
+            x: 12 * TILE_SIZE + TILE_SIZE / 2,
+            y: 11 * TILE_SIZE + TILE_SIZE / 2,
+            radius: 12,
+            speed: 3.2,
+            angle: -Math.PI / 2,
+            flashlightOn: true,
+            battery: 100,
+            isHiding: false,
+            inventory: [],
+            hidingSpotId: null
+        };
+
+        // Mallikin AI Enemy State
+        const enemy = {
+            x: 12 * TILE_SIZE + TILE_SIZE / 2,
+            y: 2 * TILE_SIZE + TILE_SIZE / 2,
+            radius: 14,
+            speed: 2.1,
+            chaseSpeed: 3.6,
+            angle: Math.PI / 2,
+            state: 'PATROL', // PATROL, INVESTIGATE, CHASE, FROZEN
+            patrolTargets: [
+                { x: 12, y: 2 }, { x: 5, y: 5 }, { x: 19, y: 5 }, 
+                { x: 12, y: 11 }, { x: 4, y: 15 }, { x: 20, y: 15 }
+            ],
+            currentTargetIdx: 0,
+            investigatePos: null,
+            frozenTimer: 0,
+            detectionAlert: 0 // 0 to 1
+        };
+
+        // Controls
+        const keys = {};
+        const touchJoystick = { active: false, startX: 0, startY: 0, dx: 0, dy: 0 };
+
+        // --- CORE INITIALIZATION ---
+        window.addEventListener('DOMContentLoaded', () => {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            setupEventListeners();
+            updateInventoryUI();
+        });
+
+        function resizeCanvas() {
+            // Keep 4:3 aspect ratio native rendering grid (960x720)
+            canvas.width = MAP_COLS * TILE_SIZE; // 960
+            canvas.height = MAP_ROWS * TILE_SIZE; // 720
+        }
+
+        function setupEventListeners() {
+            // Keyboard controls
+            window.addEventListener('keydown', (e) => {
+                keys[e.code] = true;
+                if (e.code === 'KeyF' && gameRunning) toggleFlashlight();
+                if (e.code === 'KeyE' && gameRunning) handleInteraction();
+            });
+
+            window.addEventListener('keyup', (e) => {
+                keys[e.code] = false;
+            });
+
+            // Menu Buttons
+            document.getElementById('start-btn').addEventListener('click', startGame);
+            document.getElementById('restart-btn').addEventListener('click', startGame);
+            document.getElementById('playagain-btn').addEventListener('click', startGame);
+
+            document.getElementById('mute-btn').addEventListener('click', () => {
+                sounds.isMuted = !sounds.isMuted;
+                document.getElementById('mute-btn').innerText = sounds.isMuted ? '🔇 Muted' : '🔊 Sound';
+            });
+
+            // Mobile Touch Joystick setup
+            const joyZone = document.getElementById('joystick-zone');
+            const joyKnob = document.getElementById('joystick-knob');
+
+            joyZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = joyZone.getBoundingClientRect();
+                touchJoystick.active = true;
+                touchJoystick.startX = rect.left + rect.width / 2;
+                touchJoystick.startY = rect.top + rect.height / 2;
+            }, { passive: false });
+
+            joyZone.addEventListener('touchmove', (e) => {
+                if (!touchJoystick.active) return;
+                e.preventDefault();
+                const touch = e.touches[0];
+                const maxDist = 40;
+                let dx = touch.clientX - touchJoystick.startX;
+                let dy = touch.clientY - touchJoystick.startY;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > maxDist) {
+                    dx = (dx / dist) * maxDist;
+                    dy = (dy / dist) * maxDist;
+                }
+
+                joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+                touchJoystick.dx = dx / maxDist;
+                touchJoystick.dy = dy / maxDist;
+            }, { passive: false });
+
+            const resetJoy = () => {
+                touchJoystick.active = false;
+                touchJoystick.dx = 0;
+                touchJoystick.dy = 0;
+                joyKnob.style.transform = 'translate(0px, 0px)';
+            };
+
+            joyZone.addEventListener('touchend', resetJoy);
+            joyZone.addEventListener('touchcancel', resetJoy);
+
+            // Mobile Action Buttons
+            document.getElementById('btn-interact').addEventListener('click', handleInteraction);
+            document.getElementById('btn-flashlight').addEventListener('click', toggleFlashlight);
+        }
+
+        function startGame() {
+            sounds.init();
+
+            // Reset Player
+            player.x = 12 * TILE_SIZE + TILE_SIZE / 2;
+            player.y = 11 * TILE_SIZE + TILE_SIZE / 2;
+            player.battery = 100;
+            player.flashlightOn = true;
+            player.isHiding = false;
+            player.inventory = [];
+
+            // Reset Enemy
+            enemy.x = 12 * TILE_SIZE + TILE_SIZE / 2;
+            enemy.y = 2 * TILE_SIZE + TILE_SIZE / 2;
+            enemy.state = 'PATROL';
+            enemy.currentTargetIdx = 0;
+            enemy.detectionAlert = 0;
+
+            // Reset Items & Doors
+            ITEMS.forEach(i => i.collected = false);
+            DOORS.forEach(d => {
+                if (d.reqItem) d.isLocked = true;
+            });
+
+            // Reset UI
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.add('hidden');
+            document.getElementById('victory-screen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('inventory-bar').classList.remove('hidden');
+            if ('ontouchstart' in window) {
+                document.getElementById('touch-controls').classList.remove('hidden');
+            }
+
+            updateInventoryUI();
+
+            gameTime = 0;
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => gameTime++, 1000);
+
+            gameRunning = true;
+            requestAnimationFrame(gameLoop);
+        }
+
+        function toggleFlashlight() {
+            if (player.battery > 0) {
+                player.flashlightOn = !player.flashlightOn;
+                sounds.playBeep(player.flashlightOn ? 800 : 400, 'sine', 0.05, 0.1);
+            }
+        }
+
+        // --- GAME LOOP & UPDATES ---
+        let lastTime = performance.now();
+
+        function gameLoop(now) {
+            if (!gameRunning) return;
+            const dt = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            update(dt);
+            render();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function update(dt) {
+            // 1. Drain battery
+            if (player.flashlightOn) {
+                player.battery = Math.max(0, player.battery - dt * 1.5); // ~66s battery life
+                if (player.battery <= 0) player.flashlightOn = false;
+            }
+            document.getElementById('battery-bar').style.width = `${player.battery}%`;
+
+            // 2. Player Movement
+            if (!player.isHiding) {
+                let moveX = 0;
+                let moveY = 0;
+
+                if (keys['KeyW'] || keys['ArrowUp']) moveY -= 1;
+                if (keys['KeyS'] || keys['ArrowDown']) moveY += 1;
+                if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+                if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+
+                // Combine with Touch Joystick
+                if (touchJoystick.active) {
+                    moveX = touchJoystick.dx;
+                    moveY = touchJoystick.dy;
+                }
+
+                if (moveX !== 0 || moveY !== 0) {
+                    const len = Math.hypot(moveX, moveY);
+                    const normX = moveX / len;
+                    const normY = moveY / len;
+
+                    const nextX = player.x + normX * player.speed;
+                    const nextY = player.y + normY * player.speed;
+
+                    // Angle face
+                    player.angle = Math.atan2(normY, normX);
+
+                    // Circle vs Map Collision
+                    if (!checkMapCollision(nextX, player.y, player.radius)) player.x = nextX;
+                    if (!checkMapCollision(player.x, nextY, player.radius)) player.y = nextY;
+                }
+            }
+
+            // 3. Enemy AI Logic
+            updateEnemyAI(dt);
+
+            // 4. Update HUD Heartbeat / Threat
+            const distToEnemy = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+            const threatElem = document.getElementById('threat-level');
+            const heartElem = document.getElementById('heart-icon');
+
+            if (distToEnemy < 120 || enemy.state === 'CHASE') {
+                threatElem.innerText = 'PURSUED!';
+                threatElem.className = 'font-bold text-red-500 font-mono animate-pulse';
+                heartElem.style.setProperty('--beat-speed', '0.4s');
+                if (Math.random() < 0.05) sounds.playHeartbeat(1.5);
+            } else if (distToEnemy < 250) {
+                threatElem.innerText = 'WARNING';
+                threatElem.className = 'font-bold text-amber-400 font-mono';
+                heartElem.style.setProperty('--beat-speed', '0.8s');
+                if (Math.random() < 0.02) sounds.playHeartbeat(1.0);
+            } else {
+                threatElem.innerText = 'CALM';
+                threatElem.className = 'font-bold text-emerald-400 font-mono';
+                heartElem.style.setProperty('--beat-speed', '1.4s');
+            }
+
+            // 5. Interaction Prompts Check
+            checkInteractionPrompt();
+        }
+
+        // --- ENEMY AI BEHAVIOR ---
+        function updateEnemyAI(dt) {
+            const distToPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+            const canSeePlayer = !player.isHiding && hasLineOfSight(enemy.x, enemy.y, player.x, player.y) && distToPlayer < 240;
+
+            // Check if player is shining flashlight directly at mannequin (Weeping Angel effect mechanic)
+            let isPlayerLookingAtEnemy = false;
+            if (player.flashlightOn && !player.isHiding) {
+                const angleToEnemy = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+                let angleDiff = Math.abs(player.angle - angleToEnemy);
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                angleDiff = Math.abs(angleDiff);
+
+                if (angleDiff < 0.45 && distToPlayer < 200 && hasLineOfSight(player.x, player.y, enemy.x, enemy.y)) {
+                    isPlayerLookingAtEnemy = true;
+                }
+            }
+
+            // If player looks directly at mannequin with light on, it freezes stiff!
+            if (isPlayerLookingAtEnemy && enemy.state === 'CHASE') {
+                enemy.state = 'FROZEN';
+                enemy.frozenTimer = 0.5; // Stays frozen for a brief duration
+            }
+
+            if (enemy.state === 'FROZEN') {
+                enemy.frozenTimer -= dt;
+                if (enemy.frozenTimer <= 0 && !isPlayerLookingAtEnemy) {
+                    enemy.state = 'CHASE';
+                }
+                return; // Do not move while frozen!
+            }
+
+            // State Machine Transition
+            if (canSeePlayer) {
+                if (enemy.state !== 'CHASE') {
+                    enemy.state = 'CHASE';
+                    sounds.playBeep(180, 'sawtooth', 0.2, 0.3);
+                }
+            } else if (enemy.state === 'CHASE') {
+                // Lost sight of player -> Investigate last seen location
+                enemy.state = 'INVESTIGATE';
+                enemy.investigatePos = { x: player.x, y: player.y };
+            }
+
+            // Movement logic
+            let targetX, targetY;
+            let currentSpeed = enemy.speed;
+
+            if (enemy.state === 'CHASE') {
+                targetX = player.x;
+                targetY = player.y;
+                currentSpeed = enemy.chaseSpeed;
+
+                // Catch Condition
+                if (distToPlayer < (enemy.radius + player.radius - 2)) {
+                    triggerGameOver();
+                    return;
+                }
+            } else if (enemy.state === 'INVESTIGATE') {
+                targetX = enemy.investigatePos.x;
+                targetY = enemy.investigatePos.y;
+
+                if (Math.hypot(enemy.x - targetX, enemy.y - targetY) < 15) {
+                    enemy.state = 'PATROL'; // Resume patrol
+                }
+            } else { // PATROL
+                const patrolTargetTile = enemy.patrolTargets[enemy.currentTargetIdx];
+                targetX = patrolTargetTile.x * TILE_SIZE + TILE_SIZE / 2;
+                targetY = patrolTargetTile.y * TILE_SIZE + TILE_SIZE / 2;
+
+                if (Math.hypot(enemy.x - targetX, enemy.y - targetY) < 20) {
+                    enemy.currentTargetIdx = (enemy.currentTargetIdx + 1) % enemy.patrolTargets.length;
+                }
+            }
+
+            // Move towards target
+            const angle = Math.atan2(targetY - enemy.y, targetX - enemy.x);
+            enemy.angle = angle;
+
+            const nextX = enemy.x + Math.cos(angle) * currentSpeed;
+            const nextY = enemy.y + Math.sin(angle) * currentSpeed;
+
+            // Enemy Collision & Slide against walls
+            if (!checkMapCollision(nextX, enemy.y, enemy.radius)) enemy.x = nextX;
+            if (!checkMapCollision(enemy.x, nextY, enemy.radius)) enemy.y = nextY;
+        }
+
+        // --- MAP & COLLISION DETECTORS ---
+        function checkMapCollision(x, y, radius) {
+            const minCol = Math.floor((x - radius) / TILE_SIZE);
+            const maxCol = Math.floor((x + radius) / TILE_SIZE);
+            const minRow = Math.floor((y - radius) / TILE_SIZE);
+            const maxRow = Math.floor((y + radius) / TILE_SIZE);
+
+            for (let r = minRow; r <= maxRow; r++) {
+                for (let c = minCol; c <= maxCol; c++) {
+                    if (r < 0 || r >= MAP_ROWS || c < 0 || c >= MAP_COLS) return true;
+                    
+                    const tile = MAP_GRID[r][c];
+
+                    // Tile 1 is Wall
+                    if (tile === 1) return true;
+
+                    // Tile 2 or 4: Check if locked door exists at this tile
+                    if (tile === 2 || tile === 4) {
+                        const door = DOORS.find(d => d.col === c && d.row === r);
+                        if (door && door.isLocked) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // Raycasting Line-of-sight check between two points
+        function hasLineOfSight(x1, y1, x2, y2) {
+            const dist = Math.hypot(x2 - x1, y2 - y1);
+            const steps = Math.ceil(dist / 10);
+            const dx = (x2 - x1) / steps;
+            const dy = (y2 - y1) / steps;
+
+            let cx = x1;
+            let cy = y1;
+
+            for (let i = 0; i < steps; i++) {
+                cx += dx;
+                cy += dy;
+                const c = Math.floor(cx / TILE_SIZE);
+                const r = Math.floor(cy / TILE_SIZE);
+
+                if (r >= 0 && r < MAP_ROWS && c >= 0 && c < MAP_COLS) {
+                    if (MAP_GRID[r][c] === 1) return false; // Wall blocks view
+                    const door = DOORS.find(d => d.col === c && d.row === r);
+                    if (door && door.isLocked) return false; // Locked door blocks view
+                }
+            }
+            return true;
+        }
+
+        // --- INTERACTION LOGIC ---
+        function checkInteractionPrompt() {
+            const prompt = document.getElementById('interaction-prompt');
+            const pCol = Math.floor(player.x / TILE_SIZE);
+            const pRow = Math.floor(player.y / TILE_SIZE);
+
+            if (player.isHiding) {
+                prompt.innerText = 'PRESS [E] TO EXIT HIDING';
+                prompt.classList.remove('hidden');
+                return;
+            }
+
+            // Check nearby items
+            const item = ITEMS.find(i => !i.collected && Math.hypot(player.x - (i.col * TILE_SIZE + TILE_SIZE/2), player.y - (i.row * TILE_SIZE + TILE_SIZE/2)) < 35);
+            if (item) {
+                prompt.innerText = `PRESS [E] TO PICK UP ${item.name.toUpperCase()}`;
+                prompt.classList.remove('hidden');
+                return;
+            }
+
+            // Check nearby doors
+            const door = DOORS.find(d => Math.hypot(player.x - (d.col * TILE_SIZE + TILE_SIZE/2), player.y - (d.row * TILE_SIZE + TILE_SIZE/2)) < 45);
+            if (door && door.isLocked) {
+                const hasReq = player.inventory.some(i => i.id === door.reqItem);
+                prompt.innerText = hasReq ? `PRESS [E] TO UNLOCK ${door.name.toUpperCase()}` : `LOCKED: REQUIRES ${door.reqItem.replace('_', ' ').toUpperCase()}`;
+                prompt.classList.remove('hidden');
+                return;
+            }
+
+            // Check nearby hiding spots (Tile 3)
+            if (MAP_GRID[pRow][pCol] === 3) {
+                prompt.innerText = 'PRESS [E] TO HIDE IN CLOTHING RACK';
+                prompt.classList.remove('hidden');
+                return;
+            }
+
+            prompt.classList.add('hidden');
+        }
+
+        function handleInteraction() {
+            if (player.isHiding) {
+                player.isHiding = false;
+                sounds.playBeep(350, 'sine', 0.1, 0.1);
+                return;
+            }
+
+            const pCol = Math.floor(player.x / TILE_SIZE);
+            const pRow = Math.floor(player.y / TILE_SIZE);
+
+            // 1. Check Pickups
+            const itemIdx = ITEMS.findIndex(i => !i.collected && Math.hypot(player.x - (i.col * TILE_SIZE + TILE_SIZE/2), player.y - (i.row * TILE_SIZE + TILE_SIZE/2)) < 40);
+            if (itemIdx !== -1) {
+                ITEMS[itemIdx].collected = true;
+                player.inventory.push(ITEMS[itemIdx]);
+                sounds.playPickup();
+                updateInventoryUI();
+                return;
+            }
+
+            // 2. Check Doors
+            const door = DOORS.find(d => Math.hypot(player.x - (d.col * TILE_SIZE + TILE_SIZE/2), player.y - (d.row * TILE_SIZE + TILE_SIZE/2)) < 45);
+            if (door && door.isLocked) {
+                const reqItemIdx = player.inventory.findIndex(i => i.id === door.reqItem);
+                if (reqItemIdx !== -1) {
+                    door.isLocked = false;
+                    sounds.playDoorUnlock();
+
+                    // If it's the main exit gates
+                    if (door.id.startsWith('main_exit')) {
+                        DOORS.forEach(d => { if (d.id.startsWith('main_exit')) d.isLocked = false; });
+                        triggerVictory();
+                        return;
+                    }
+                }
+                return;
+            }
+
+            // 3. Check Hiding Racks
+            if (MAP_GRID[pRow][pCol] === 3) {
+                player.isHiding = true;
+                sounds.playBeep(250, 'sine', 0.1, 0.1);
+                // Alert enemy to investigate if chase active nearby
+                if (enemy.state === 'CHASE') {
+                    enemy.state = 'INVESTIGATE';
+                    enemy.investigatePos = { x: player.x, y: player.y };
+                }
+            }
+        }
+
+        function updateInventoryUI() {
+            const container = document.getElementById('inventory-slots');
+            container.innerHTML = '';
+
+            for (let i = 0; i < 4; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'w-10 h-10 border border-slate-700 bg-slate-900 rounded flex items-center justify-center text-lg relative';
+                if (player.inventory[i]) {
+                    const item = player.inventory[i];
+                    slot.innerText = item.icon;
+                    slot.title = item.name;
+                    slot.style.borderColor = item.color;
+                } else {
+                    slot.innerHTML = '<span class="text-slate-700 text-xs">•</span>';
+                }
+                container.appendChild(slot);
+            }
+        }
+
+        // --- GAME END TRIGGERS ---
+        function triggerGameOver() {
+            gameRunning = false;
+            clearInterval(timerInterval);
+            sounds.playJumpscare();
+            document.getElementById('gameover-screen').classList.remove('hidden');
+        }
+
+        function triggerVictory() {
+            gameRunning = false;
+            clearInterval(timerInterval);
+            sounds.playPickup();
+
+            const mins = Math.floor(gameTime / 60).toString().padStart(2, '0');
+            const secs = (gameTime % 60).toString().padStart(2, '0');
+            document.getElementById('final-time').innerText = `${mins}:${secs}`;
+            document.getElementById('final-items').innerText = `${player.inventory.length}/4`;
+
+            document.getElementById('victory-screen').classList.remove('hidden');
+        }
+
+        // --- CANVAS RENDERING ENGINE ---
+        function render() {
+            // Clear Frame
+            ctx.fillStyle = '#050508';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Draw Map Floors & Walls
+            for (let r = 0; r < MAP_ROWS; r++) {
+                for (let c = 0; c < MAP_COLS; c++) {
+                    const tile = MAP_GRID[r][c];
+                    const x = c * TILE_SIZE;
+                    const y = r * TILE_SIZE;
+
+                    if (tile === 1) { // Wall
+                        ctx.fillStyle = '#1e293b';
+                        ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                        ctx.strokeStyle = '#0f172a';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+                    } else if (tile === 3) { // Clothing Rack Hiding Spot
+                        // Tile Floor
+                        drawTileFloor(x, y);
+                        // Rack Asset
+                        ctx.fillStyle = '#475569';
+                        ctx.beginPath();
+                        ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, 14, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.strokeStyle = '#94a3b8';
+                        ctx.lineWidth = 3;
+                        ctx.stroke();
+                        ctx.fillStyle = '#e2e8f0';
+                        ctx.font = '10px sans-serif';
+                        ctx.fillText('👔', x + 12, y + 24);
+                    } else { // Normal Floor (0, 2, 4)
+                        drawTileFloor(x, y);
+                    }
+                }
+            }
+
+            // 2. Draw Doors
+            DOORS.forEach(door => {
+                const x = door.col * TILE_SIZE;
+                const y = door.row * TILE_SIZE;
+
+                if (door.isLocked) {
+                    ctx.fillStyle = door.id.startsWith('main_exit') ? '#eab308' : '#dc2626';
+                    ctx.fillRect(x + 4, y + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '12px sans-serif';
+                    ctx.fillText('🔒', x + 12, y + 25);
+                } else {
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x + 6, y + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+                }
+            });
+
+            // 3. Draw Room Labels
+            ROOM_LABELS.forEach(label => {
+                ctx.fillStyle = '#334155';
+                ctx.font = 'bold 10px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.fillText(label.text, label.x * TILE_SIZE, label.y * TILE_SIZE);
+                ctx.textAlign = 'left';
+            });
+
+            // 4. Draw Collectible Items
+            ITEMS.forEach(item => {
+                if (!item.collected) {
+                    const ix = item.col * TILE_SIZE + TILE_SIZE / 2;
+                    const iy = item.row * TILE_SIZE + TILE_SIZE / 2;
+
+                    // Glow aura
+                    ctx.fillStyle = item.color;
+                    ctx.globalAlpha = 0.3;
+                    ctx.beginPath();
+                    ctx.arc(ix, iy, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+
+                    // Icon
+                    ctx.font = '14px sans-serif';
+                    ctx.fillText(item.icon, ix - 7, iy + 5);
+                }
+            });
+
+            // 5. Draw Mallikin Enemy (Mannequin)
+            if (!player.isHiding || hasLineOfSight(player.x, player.y, enemy.x, enemy.y)) {
+                ctx.save();
+                ctx.translate(enemy.x, enemy.y);
+                ctx.rotate(enemy.angle);
+
+                // Body Base
+                ctx.fillStyle = enemy.state === 'FROZEN' ? '#94a3b8' : '#e2e8f0';
+                ctx.beginPath();
+                ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Shoulders / Stiff Pose
+                ctx.fillStyle = '#475569';
+                ctx.fillRect(-4, -14, 8, 28);
+
+                // Head
+                ctx.fillStyle = '#f8fafc';
+                ctx.beginPath();
+                ctx.arc(3, 0, 7, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Glowing Eyes
+                ctx.fillStyle = enemy.state === 'CHASE' ? '#ef4444' : '#000000';
+                ctx.beginPath();
+                ctx.arc(6, -3, 1.5, 0, Math.PI * 2);
+                ctx.arc(6, 3, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            // 6. Draw Player (if not hiding inside rack)
+            if (!player.isHiding) {
+                ctx.save();
+                ctx.translate(player.x, player.y);
+                ctx.rotate(player.angle);
+
+                // Player Body
+                ctx.fillStyle = '#0284c7';
+                ctx.beginPath();
+                ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Flashlight Device in hand
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillRect(4, 5, 8, 4);
+
+                ctx.restore();
+            }
+
+            // 7. Dynamic Fog of War & Flashlight Cone (Horror Atmosphere)
+            drawLightingAndFog();
+        }
+
+        function drawTileFloor(x, y) {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+        }
+
+        function drawLightingAndFog() {
+            // Create a full dark mask overlay
+            ctx.save();
+
+            // Offscreen canvas logic simulated with composite modes
+            const fogCanvas = document.createElement('canvas');
+            fogCanvas.width = canvas.width;
+            fogCanvas.height = canvas.height;
+            const fogCtx = fogCanvas.getContext('2d');
+
+            // Fill with dark ambiance
+            fogCtx.fillStyle = 'rgba(2, 6, 23, 0.94)';
+            fogCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            fogCtx.globalCompositeOperation = 'destination-out';
+
+            // Ambient vision circle around player
+            if (!player.isHiding) {
+                const ambientGrad = fogCtx.createRadialGradient(
+                    player.x, player.y, 10,
+                    player.x, player.y, 65
+                );
+                ambientGrad.addColorStop(0, 'rgba(0,0,0,1)');
+                ambientGrad.addColorStop(1, 'rgba(0,0,0,0)');
+
+                fogCtx.fillStyle = ambientGrad;
+                fogCtx.beginPath();
+                fogCtx.arc(player.x, player.y, 65, 0, Math.PI * 2);
+                fogCtx.fill();
+
+                // Flashlight Spotlight Cone
+                if (player.flashlightOn) {
+                    const coneAngle = 0.5; // ~30 degrees arc
+                    const coneLength = 240;
+
+                    fogCtx.beginPath();
+                    fogCtx.moveTo(player.x, player.y);
+                    fogCtx.arc(
+                        player.x, player.y,
+                        coneLength,
+                        player.angle - coneAngle,
+                        player.angle + coneAngle
+                    );
+                    fogCtx.closePath();
+
+                    const flashGrad = fogCtx.createRadialGradient(
+                        player.x, player.y, 20,
+                        player.x, player.y, coneLength
+                    );
+                    flashGrad.addColorStop(0, 'rgba(0,0,0,1)');
+                    flashGrad.addColorStop(0.8, 'rgba(0,0,0,0.8)');
+                    flashGrad.addColorStop(1, 'rgba(0,0,0,0)');
+
+                    fogCtx.fillStyle = flashGrad;
+                    fogCtx.fill();
+                }
+            }
+
+            // Draw fog over main scene
+            ctx.drawImage(fogCanvas, 0, 0);
+            ctx.restore();
+        }
+    </script>
+</body>
+</html>
